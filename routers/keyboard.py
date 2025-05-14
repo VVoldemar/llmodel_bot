@@ -28,8 +28,8 @@ async def set_initial_settings_state(state: aiogram.fsm.context.FSMContext):
     await state.update_data(history=[keyboards.inline.MENU_MAIN], prompt_message_id=None)
 
 
-async def _update_settings_message(message: aiogram.types.Message, new_text: str,
-                                   new_markup: aiogram.types.InlineKeyboardMarkup, bot: aiogram.Bot):
+async def _update_message(message: aiogram.types.Message, new_text: str,
+                          new_markup: aiogram.types.InlineKeyboardMarkup, bot: aiogram.Bot):
     """Helper function to edit message text and markup, handling 'message is not modified' error."""
     if message.text != new_text or message.reply_markup != new_markup:
         try:
@@ -94,7 +94,7 @@ async def navigate_settings(query: types.CallbackQuery, callback_data: keyboards
     new_text = query.message.md_text if next_menu_key not in keyboards.inline.MENU_TITLES else keyboards.inline.MENU_TITLES.get(
         next_menu_key)
     new_text += additinal_info
-    await _update_settings_message(query.message, new_text, kb, bot)
+    await _update_message(query.message, new_text, kb, bot)
 
 
 @kb_router.message(MenuState.waiting_for_instructions)
@@ -146,3 +146,21 @@ async def navigate_settings_in_other_state(query: types.CallbackQuery,
                                            session: orm.Session, bot: aiogram.Bot):
     await navigate_settings(query, callback_data, state, user, session, bot)
     await state.set_state(MenuState.navigating)
+
+
+@kb_router.callback_query(keyboards.callback_data.ModelCallback.filter())
+async def change_model(query: aiogram.types.CallbackQuery,
+                       callback_data: keyboards.callback_data.ModelCallback,
+                       session: orm.Session,
+                       user: models.user.User,
+                       bot: aiogram.Bot):
+    await query.answer()
+    model = callback_data.model
+    if model in strings.MODELS and user.selected_model != model:
+        user.selected_model = model
+        session.add(user)
+        session.flush()
+
+    kb = await keyboards.inline.get_model_keyboard(user)
+
+    await _update_message(query.message, query.message.md_text, kb, bot)

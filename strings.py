@@ -1,6 +1,19 @@
+from models.user import User
+
+
 GREETING = '''
 Hi, I'm AI bot
 '''
+
+def profile_info(user: User):
+    return f"""
+*👤 {user.username}*
+
+Register date: {str(user.registered_at).split()[0]}
+Sent requests: 
+
+Rederrals: {len(user.referrals)}
+"""
 
 
 class MENU_KEYBOARD:
@@ -17,6 +30,8 @@ MODELS = {
     "deepseek-r1:free": "DeepSeek R1",
     "qwen3-30b-a3b": "Qwen 3 30B"
 }
+
+MODEL_SELECTED = "✅ "
 
 
 class SETTINGS_MENUS:

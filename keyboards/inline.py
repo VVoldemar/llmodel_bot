@@ -85,24 +85,35 @@ MENU_TITLES = {
 }
 
 
-async def get_settings_keyboard(current_menu_key: str, user: models.user.User, prefix: str = "",
-                                prefix_apply_index=-1) -> aiogram.types.InlineKeyboardMarkup:
+async def get_settings_keyboard(current_menu_key: str, user: models.user.User,) -> aiogram.types.InlineKeyboardMarkup:
     """Returns button markup for the specified settings menu.
 
     :param current_menu_key: The key of the current menu to display
     :param user: user object
-    :param prefix: The string that will be added to beginning of button text with `prefix_apply_index` number
-    :param prefix_apply_index: The number off button, to which `prefix` will be applied
     :returns: InlineKeyboardMarkup
     """
     builder = aiogram.utils.keyboard.InlineKeyboardBuilder()
     all_menus = get_settings_menus(user)
     menu_items = all_menus.get(current_menu_key, [])
 
-    for i, (text, action_key) in enumerate(menu_items):
-        if i == prefix_apply_index:
-            text = prefix + text
+    for text, action_key in menu_items:
         builder.button(text=text, callback_data=callback_data.SettingsCallback(action=action_key))
 
     builder.adjust(1)
+    return builder.as_markup()
+
+
+
+async def get_model_keyboard(user: models.user.User) -> aiogram.types.InlineKeyboardMarkup:
+    """Returns button markup for the model selection."""
+    builder = aiogram.utils.keyboard.InlineKeyboardBuilder()
+    models = strings.MODELS.copy()
+
+    if user.selected_model is not None and user.selected_model in models:
+        models[user.selected_model] = models[user.selected_model] + strings.MODEL_SELECTED
+
+    for model_id, model_name in models.items():
+        builder.button(text=model_name, callback_data=callback_data.ModelCallback(model=model_id))
+
+    builder.adjust(2)
     return builder.as_markup()

@@ -34,9 +34,10 @@ async def menu_handler(message: types.Message, state: aiogram.fsm.context.FSMCon
                        user: models.user.User):  # user is injected by middleware
     match message.text:
         case strings.MENU_KEYBOARD.PROFILE:
-            await message.answer("Profile")
+            await message.answer(strings.profile_info(user), parse_mode="Markdown")
         case strings.MENU_KEYBOARD.MODEL:
-            await message.answer("Change model kb")
+            kb = await keyboards.inline.get_model_keyboard(user)
+            await message.answer("Change model kb", reply_markup=kb)
         case strings.MENU_KEYBOARD.HELP:
             await message.answer("Support")
         case strings.MENU_KEYBOARD.REFERRAL:
