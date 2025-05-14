@@ -52,4 +52,5 @@ def get_user_instruction(session: sqlalchemy.orm.Session):
 
 async def set_instruction(instruction: str, session: sqlalchemy.orm.Session, user: models.user.User):
     user.instruction = instruction
+    session.add(user)
     session.flush()
