@@ -117,43 +117,27 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
     return None
 
 
-# async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text: str,
-#                                            current_message: types.Message | None) -> types.Message:
-#     """Helper to send a new message or update an existing one."""
-#     if not text.strip():
-#         if current_message:
-#             return current_message
-#         text = "..."
-#
-#     if current_message:
-#         try:
-#             await _update_message_helper(message_to_edit=current_message, new_text=text, new_markup=None, bot=bot)
-#             return current_message
-#         except TelegramBadRequest as e:
-#             if "message to edit not found" in str(e).lower() or \
-#                     "message can't be edited" in str(e).lower():
-#                 pass
-#             elif "message is not modified" in str(e).lower():
-#                 return current_message
-#             else:
-#                 pass
-
-# try:
-#     return await bot.send_message(chat_id, text, parse_mode="MarkdownV2")
-# except TelegramBadRequest as e:
-#     escaped_text = aiogram.utils.markdown.hide_link(text)  # Basic escape
-#     try:
-#         return await bot.send_message(chat_id, escaped_text, parse_mode=None)
-#     except Exception as e:
-#         raise e
-
-
 @router.message(filters.CommandStart())
-async def start(message: types.Message):
+async def start(message: types.Message, session: sqlalchemy.orm.Session, user: models.user.User):
     await message.answer(
         strings.GREETING,
         reply_markup=keyboards.reply.get_menu_keyboard()
     )
+    try:
+        services.message_service.delete_messages(session, user)
+    except Exception:
+        pass
+
+
+@router.message(aiogram.filters.command.Command("clear_context"))
+@router.message(aiogram.filters.command.Command("clearcontext"))
+@router.message(aiogram.filters.command.Command("clear"))
+async def clear_context(message: aiogram.types.Message, session: sqlalchemy.orm.Session, user: models.user.User):
+    try:
+        services.message_service.delete_messages(session, user)
+        await message.answer(strings.CLEAR_CONTEXT.SUCESS)
+    except Exception:
+        await message.answer(strings.CLEAR_CONTEXT.ERROR)
 
 
 @router.message(aiogram.F.text.in_([
@@ -171,8 +155,6 @@ async def menu_handler(message: types.Message, state: aiogram.fsm.context.FSMCon
         case strings.MENU_KEYBOARD.MODEL:
             kb = await keyboards.inline.get_model_keyboard(user)
             await message.answer("Change model kb", reply_markup=kb)
-        case strings.MENU_KEYBOARD.HELP:
-            await message.answer("Support")
         case strings.MENU_KEYBOARD.REFERRAL:
             await message.answer("Referral")
         case strings.MENU_KEYBOARD.SETTINGS:
@@ -368,4 +350,5 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
         raise e
 
     services.message_service.add_message(session, message.text, user)
-    services.message_service.add_message(session, full_response_for_history, user, is_from_user=False)
+    if full_response_for_history:
+        services.message_service.add_message(session, full_response_for_history, user, is_from_user=False)

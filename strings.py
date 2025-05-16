@@ -91,3 +91,8 @@ class SETTINGS_MENUS:
 
         CALLBACK_ENGLISH = "action_set_lang_en"
         CALLBACK_RUSSIAN = "action_set_lang_ru"
+
+
+class CLEAR_CONTEXT:
+    SUCESS = "✅ Context successfully cleared. AI wouldn't see messages above."
+    ERROR = "❌ Context clearing has failed. Try again."

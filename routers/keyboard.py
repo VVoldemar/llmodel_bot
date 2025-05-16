@@ -128,7 +128,8 @@ async def set_instructions(message: aiogram.types.Message, session: orm.Session,
 
     menu_display_text = keyboards.inline.MENU_TITLES.get(current_menu_key, "Settings")
     if current_menu_key == keyboards.inline.MENU_INSTRUCTION:
-        menu_display_text = strings.SETTINGS_MENUS.MENU_INSTRUCTION.INSTRUCTION_UPDATED + f"```{user.instruction}```"
+        menu_display_text = strings.SETTINGS_MENUS.MENU_INSTRUCTION.INSTRUCTION_UPDATED
+        menu_display_text = f"{menu_display_text}```{strings.SETTINGS_MENUS.MENU_INSTRUCTION.INSTRUCTION_ASSIGNED_HEADER}\n{user.instruction}```"
 
     new_menu_message = await bot.send_message(
         chat_id=message.chat.id,

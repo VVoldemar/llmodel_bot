@@ -15,11 +15,10 @@ def get_menu_keyboard() -> aiogram.utils.keyboard.ReplyKeyboardMarkup:
 
     builder.row(
         aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.PROFILE),
-        aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.MODEL)
+        aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.REFERRAL)
     )
     builder.row(
-        aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.HELP),
-        aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.REFERRAL)
+        aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.MODEL)
     )
     builder.row(
         aiogram.types.KeyboardButton(text=strings.MENU_KEYBOARD.SETTINGS)
