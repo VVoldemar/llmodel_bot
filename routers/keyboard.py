@@ -34,7 +34,7 @@ async def _update_message(message: aiogram.types.Message, new_text: str,
     if message.text != new_text or message.reply_markup != new_markup:
         try:
             await bot.edit_message_text(text=new_text, chat_id=message.chat.id, message_id=message.message_id,
-                                        reply_markup=new_markup, parse_mode="MarkdownV2")
+                                        reply_markup=new_markup, parse_mode="Markdown")
         except aiogram.exceptions.TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 logging.info("Message not modified, skipping edit.")
@@ -42,7 +42,7 @@ async def _update_message(message: aiogram.types.Message, new_text: str,
                 logging.error(f"Error editing message: {e}")
 
 
-@kb_router.callback_query(MenuState.navigating, )
+# @kb_router.callback_query(MenuState.navigating, )
 @kb_router.callback_query(MenuState.navigating, keyboards.callback_data.SettingsCallback.filter())
 async def navigate_settings(query: types.CallbackQuery, callback_data: keyboards.callback_data.SettingsCallback,
                             state: aiogram.fsm.context.FSMContext, user: models.user.User, session: orm.Session,
@@ -84,16 +84,17 @@ async def navigate_settings(query: types.CallbackQuery, callback_data: keyboards
         session.add(user)
         session.flush()
 
-    if action == keyboards.inline.MENU_INSTRUCTION:
-        if user.instruction is not None:
-            additinal_info = f"\n```{user.instruction}```"
-        else:
-            additinal_info = strings.SETTINGS_MENUS.MENU_INSTRUCTION.INSTRUCTION_NOT_ASSIGNED
 
     kb = await keyboards.inline.get_settings_keyboard(next_menu_key, user)
     new_text = query.message.md_text if next_menu_key not in keyboards.inline.MENU_TITLES else keyboards.inline.MENU_TITLES.get(
         next_menu_key)
-    new_text += additinal_info
+
+    if action == keyboards.inline.MENU_INSTRUCTION:
+        if user.instruction is not None and user.instruction.strip():
+            new_text = f"{new_text}\n```{strings.SETTINGS_MENUS.MENU_INSTRUCTION.INSTRUCTION_ASSIGNED_HEADER}\n{user.instruction}```"
+        else:
+            new_text += strings.SETTINGS_MENUS.MENU_INSTRUCTION.INSTRUCTION_NOT_ASSIGNED
+    # new_text += additinal_info
     await _update_message(query.message, new_text, kb, bot)
 
 

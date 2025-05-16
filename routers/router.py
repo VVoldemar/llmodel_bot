@@ -55,7 +55,8 @@ async def _update_message_helper(bot: aiogram.Bot, message_to_edit: types.Messag
 
 async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_content: str,
                                            current_message_obj: types.Message | None,
-                                           is_think_block_content: bool) -> types.Message | None:
+                                           is_think_block_content: bool,
+                                           is_last_update: bool = False) -> types.Message | None:
     """
     Formats text (e.g., as expandable blockquote if needed) and sends/updates.
     Returns the sent/updated message object or None if sending failed.
@@ -70,13 +71,13 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
         final_text_to_send = aiogram.utils.formatting.Text(text_content)
         stripped_content = text_content.strip()
         if stripped_content:
-            if not stripped_content.startswith("<blockquote expandable>"):
-                stripped_content = "<blockquote expandable><s>model thoughts</s>\n" + stripped_content + "</blockquote>"
-            final_text_to_send = aiogram.utils.formatting.Text(stripped_content)
-    else:
-        final_text_to_send = aiogram.utils.formatting.Text(text_content)
+            stripped_content = aiogram.utils.formatting.Text(stripped_content)
+            final_text_to_send = f"<blockquote{" expandable" if is_last_update else ""}>\n" + stripped_content.as_html() + "</blockquote>"
 
-    if not final_text_to_send.as_markdown() and not (current_message_obj and current_message_obj.text == "⏳"):
+    else:
+        final_text_to_send = aiogram.utils.formatting.Text(text_content).as_html()
+
+    if not final_text_to_send and not (current_message_obj and current_message_obj.text == "⏳"):
         if current_message_obj:
             return current_message_obj
         return None
@@ -85,7 +86,7 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
     if current_message_obj:
         try:
             updated_msg = await _update_message_helper(bot=bot, message_to_edit=current_message_obj,
-                                                       new_text=final_text_to_send.as_html(), new_markup=None)
+                                                       new_text=final_text_to_send, new_markup=None)
             return updated_msg
         except TelegramBadRequest as e:
             if "message to edit not found" in str(e).lower() or \
@@ -94,7 +95,7 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
                 new_message_sent = True
             elif "message is not modified" not in str(e).lower():
                 print(
-                    f"Telegram API error on update: {e}. Formatted Text: '{final_text_to_send.as_markdown()[:100]}...'")
+                    f"Telegram API error on update: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
                 new_message_sent = True
             else:
                 return current_message_obj
@@ -104,9 +105,9 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
     if new_message_sent:
         try:
             parse_mode = "MarkdownV2" if not is_think_block_content else "HTML"
-            return await bot.send_message(chat_id, final_text_to_send.as_html(), parse_mode="HTML")
+            return await bot.send_message(chat_id, final_text_to_send, parse_mode="HTML")
         except TelegramBadRequest as e:
-            print(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send.as_markdown()[:100]}...'")
+            print(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
             # escaped_text = hide_link(text_content) # Use original raw content for hide_link
             # try:
             # print(f"Attempting to send with hide_link: {escaped_text[:100]}...")
@@ -137,14 +138,14 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
 #             else:
 #                 pass
 
-    # try:
-    #     return await bot.send_message(chat_id, text, parse_mode="MarkdownV2")
-    # except TelegramBadRequest as e:
-    #     escaped_text = aiogram.utils.markdown.hide_link(text)  # Basic escape
-    #     try:
-    #         return await bot.send_message(chat_id, escaped_text, parse_mode=None)
-    #     except Exception as e:
-    #         raise e
+# try:
+#     return await bot.send_message(chat_id, text, parse_mode="MarkdownV2")
+# except TelegramBadRequest as e:
+#     escaped_text = aiogram.utils.markdown.hide_link(text)  # Basic escape
+#     try:
+#         return await bot.send_message(chat_id, escaped_text, parse_mode=None)
+#     except Exception as e:
+#         raise e
 
 
 @router.message(filters.CommandStart())
@@ -184,6 +185,7 @@ async def menu_handler(message: types.Message, state: aiogram.fsm.context.FSMCon
 
 
 @router.message(aiogram.filters.StateFilter(None), aiogram.F.text)
+@router.message(keyboard.MenuState.navigating, aiogram.F.text)
 async def other_text_handler(message: types.Message, user: models.user.User, session: sqlalchemy.orm.Session,
                              bot: aiogram.Bot):
     active_message_object: types.Message | None = None
@@ -242,7 +244,7 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
                 async for chunk_bytes in response.content.iter_any():
                     if not chunk_bytes:
                         continue
-                    print(chunk_bytes)
+                    print(chunk_bytes.decode("utf-8", errors="ignore"))
 
                     processing_buffer += chunk_bytes.decode("utf-8", errors="ignore")
                     full_response_for_history += processing_buffer
@@ -263,9 +265,15 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
 
                                 if current_text_segment.strip():
                                     active_message_object = await send_or_update_formatted_message(
-                                        bot, message.chat.id, current_text_segment, active_message_object, True
+                                        bot, message.chat.id, current_text_segment, active_message_object, True,
+                                        is_last_update=True
                                     )
 
+                                # active_message_object = await send_or_update_formatted_message(
+                                #     bot, message.chat.id, current_text_segment, active_message_object,
+                                #     is_in_think_block,
+                                #     is_last_update=True
+                                # )
                                 is_in_think_block = False
                                 current_text_segment = ""
                                 active_message_object = None
@@ -308,21 +316,26 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
                         text_to_format_and_send = current_text_segment
                         temp_remaining_text = ""
 
+                        is_last_current_message_update = False
                         if len(current_text_segment) > SAFE_MAX_LEN:
                             split_at = SAFE_MAX_LEN
 
                             text_to_format_and_send = current_text_segment[:split_at]
                             temp_remaining_text = current_text_segment[split_at:]
+                            is_last_current_message_update = True
+
 
                         if text_to_format_and_send.strip() or (
                                 active_message_object and active_message_object.text == "⏳"):
                             active_message_object = await send_or_update_formatted_message(
-                                bot, message.chat.id, text_to_format_and_send, active_message_object, is_in_think_block)
+                                bot, message.chat.id, text_to_format_and_send, active_message_object, is_in_think_block,
+                                is_last_update=is_last_current_message_update)
 
                         if temp_remaining_text.strip():
                             current_text_segment = temp_remaining_text
                         if temp_remaining_text.strip():
                             if active_message_object and text_to_format_and_send.strip():
+                                print("here")
                                 active_message_object = None
                         last_update_ts = now
 
@@ -354,5 +367,5 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
             await message.answer(err_msg)
         raise e
 
-    services.message_service.add_message(session, message.md_text, user)
-    services.message_service.add_message(session, message.md_text, user, is_from_user=False)
+    services.message_service.add_message(session, message.text, user)
+    services.message_service.add_message(session, full_response_for_history, user, is_from_user=False)
