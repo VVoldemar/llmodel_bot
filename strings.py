@@ -12,7 +12,7 @@ def profile_info(user: User):
 Register date: {str(user.registered_at).split()[0]}
 Sent requests: 
 
-Rederrals: {len(user.referrals)}
+Referrals: {len(user.referrals)}
 """
 
 
@@ -25,10 +25,10 @@ class MENU_KEYBOARD:
 
 
 MODELS = {
-    "gemma-4b-it": "Gemma 4B",
+    "qwen3-235b-a22b": "Qwen 3 235B",
     "llama-4-maverick": "Llama 4 Maverick",
-    "deepseek-r1:free": "DeepSeek R1",
-    "qwen3-30b-a3b": "Qwen 3 30B"
+    "deepseek-r1": "DeepSeek R1",
+    "deepseek-v3": "DeepSeek V3"
 }
 
 MODEL_SELECTED = "✅ "

@@ -6,7 +6,7 @@ from .db_session import SqlAlchemyBase
 
 
 class User(SqlAlchemyBase):
-    __tablename__ = "user"
+    __tablename__ = "users"
 
     id = sa.Column(sa.Integer, primary_key=True)  # tg id
     username = sa.Column(sa.String, unique=True, nullable=False)  # @tg_account
@@ -23,6 +23,8 @@ class User(SqlAlchemyBase):
 
     referrer = orm.relationship("User", back_populates="referrals", remote_side=[id])
     referrals = orm.relationship("User", back_populates="referrer")
+
+    messages = orm.relationship("Message", back_populates="owner")
     # subscriptions = orm.relationship("UserSubscription", back_populates="user")
 
     # def has_active_subscription(self):

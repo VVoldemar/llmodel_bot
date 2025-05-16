@@ -29,12 +29,12 @@ async def set_initial_settings_state(state: aiogram.fsm.context.FSMContext):
 
 
 async def _update_message(message: aiogram.types.Message, new_text: str,
-                          new_markup: aiogram.types.InlineKeyboardMarkup, bot: aiogram.Bot):
+                          new_markup: aiogram.types.InlineKeyboardMarkup | None, bot: aiogram.Bot):
     """Helper function to edit message text and markup, handling 'message is not modified' error."""
     if message.text != new_text or message.reply_markup != new_markup:
         try:
             await bot.edit_message_text(text=new_text, chat_id=message.chat.id, message_id=message.message_id,
-                                        reply_markup=new_markup, parse_mode="Markdown")
+                                        reply_markup=new_markup, parse_mode="MarkdownV2")
         except aiogram.exceptions.TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 logging.info("Message not modified, skipping edit.")
