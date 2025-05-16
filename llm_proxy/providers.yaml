@@ -1,0 +1,54 @@
+- model_name: deepseek-r1
+  litellm_params:
+    model: github/deepseek/DeepSeek-R1
+    api_key_env: GITHUB_API_KEY
+
+- model_name: deepseek-r1
+  litellm_params:
+    model: openrouter/deepseek/deepseek-r1:free
+    api_key_env: OPENROUTER_API_KEY
+
+- model_name: deepseek-r1
+  litellm_params:
+    model: openrouter/deepseek/deepseek-r1-zero:free
+    api_key_env: OPENROUTER_API_KEY
+
+- model_name: deepseek-v3
+  litellm_params:
+    model: github/deepseek/DeepSeek-V3-0324
+    api_key_env: GITHUB_API_KEY
+
+- model_name: deepseek-v3
+  litellm_params:
+    model: openrouter/deepseek/deepseek-chat-v3-0324:free
+    api_key_env: OPENROUTER_API_KEY
+
+- model_name: llama-4-maverick
+  litellm_params:
+    model: github/meta/Llama-4-Maverick-17B-128E-Instruct-FP8
+    api_key_env: GITHUB_API_KEY
+
+- model_name: llama-4-maverick
+  litellm_params:
+    model: openrouter/meta-llama/llama-4-maverick:free
+    api_key_env: OPENROUTER_API_KEY
+
+- model_name: phi-4-reasoning
+  litellm_params:
+    model: github/microsoft/Phi-4-reasoning
+    api_key_env: GITHUB_API_KEY
+
+- model_name: phi-4-reasoning
+  litellm_params:
+    model: openrouter/microsoft/phi-4-reasoning-plus:free
+    api_key_env: OPENROUTER_API_KEY
+
+- model_name: ministral-3b
+  litellm_params:
+    model: github/mistral-ai/Ministral-3B
+    api_key_env: GITHUB_API_KEY
+
+- model_name: qwen3-235b-a22b
+  litellm_params:
+    model: openrouter/qwen/qwen3-235b-a22b:free
+    api_key_env: OPENROUTER_API_KEY
