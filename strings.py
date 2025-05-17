@@ -1,3 +1,5 @@
+import aiogram
+
 from models.user import User
 
 
@@ -10,9 +12,19 @@ def profile_info(user: User):
 *👤 {user.username}*
 
 Register date: {str(user.registered_at).split()[0]}
-Sent requests: 
-
+Sent requests: {user.requests}
+Successful requests: {user.successful_requests}
 Referrals: {len(user.referrals)}
+"""
+
+
+async def promo(user: User, bot: aiogram.Bot):
+    bot_info = await bot.get_me()
+    return f"""
+Отправьте друзьям эту ссылку:
+https://t.me/{bot_info.username}?start={user.id}
+
+Она сработает, только если они не взаимодействовали с ботом до этого
 """
 
 
@@ -24,6 +36,11 @@ class MENU_KEYBOARD:
     SETTINGS = "📜 Настройки"
 
 
+DEFAULT_INSTRUCTIONS = """Please note:
+Markdown entities must not be nested.
+To escape characters '_', '*', '`', '[' outside of an entity, prepend the characters '\\' before them."""
+
+CHANGE_MODEL_TEXT = "Select preferable model. If model doesn't respond, try clear context or select another one."
 MODELS = {
     "qwen3-235b-a22b": "Qwen 3 235B",
     "llama-4-maverick": "Llama 4 Maverick",

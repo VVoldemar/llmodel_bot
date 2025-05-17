@@ -41,7 +41,7 @@ def get_settings_menus(user: models.user.User):
         MENU_MAIN: [
             (strings.SETTINGS_MENUS.MENU_MAIN.INSTRUCTION, MENU_INSTRUCTION),
             (strings.SETTINGS_MENUS.MENU_MAIN.CONTEXT, MENU_CONTEXT),
-            (strings.SETTINGS_MENUS.MENU_MAIN.LANGUAGE, MENU_LANGUAGE),
+            # (strings.SETTINGS_MENUS.MENU_MAIN.LANGUAGE, MENU_LANGUAGE),
         ],
         MENU_INSTRUCTION: [
             (strings.SETTINGS_MENUS.MENU_INSTRUCTION.EDIT, strings.SETTINGS_MENUS.MENU_INSTRUCTION.CALLBACK_EDIT),
@@ -65,11 +65,11 @@ def get_settings_menus(user: models.user.User):
             ),
             back_button
         ],
-        MENU_LANGUAGE: [
-            (strings.SETTINGS_MENUS.MENU_LANGUAGE.ENGLISH, strings.SETTINGS_MENUS.MENU_LANGUAGE.CALLBACK_ENGLISH),
-            (strings.SETTINGS_MENUS.MENU_LANGUAGE.RUSSIAN, strings.SETTINGS_MENUS.MENU_LANGUAGE.CALLBACK_RUSSIAN),
-            back_button
-        ],
+        # MENU_LANGUAGE: [
+        #     (strings.SETTINGS_MENUS.MENU_LANGUAGE.ENGLISH, strings.SETTINGS_MENUS.MENU_LANGUAGE.CALLBACK_ENGLISH),
+        #     (strings.SETTINGS_MENUS.MENU_LANGUAGE.RUSSIAN, strings.SETTINGS_MENUS.MENU_LANGUAGE.CALLBACK_RUSSIAN),
+        #     back_button
+        # ],
         MENU_SET_INSTRUCTION: [
             back_button
         ]

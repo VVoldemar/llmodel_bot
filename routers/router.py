@@ -33,7 +33,7 @@ THINK_TAG_END = {"</think>", "</reasoning>"}
 
 
 async def _update_message_helper(bot: aiogram.Bot, message_to_edit: types.Message, new_text: str,
-                                 new_markup: types.InlineKeyboardMarkup | None = None):
+                                 new_markup: types.InlineKeyboardMarkup | None = None, parse_mode: str = "HTML"):
     """Helper to edit a message, similar to _update_message."""
     if not message_to_edit:
         return None
@@ -45,7 +45,7 @@ async def _update_message_helper(bot: aiogram.Bot, message_to_edit: types.Messag
             chat_id=message_to_edit.chat.id,
             message_id=message_to_edit.message_id,
             reply_markup=new_markup,
-            parse_mode="HTML"
+            parse_mode=parse_mode
         )
     except aiogram.exceptions.TelegramBadRequest as e:
         if "message is not modified" in str(e).lower():
@@ -85,8 +85,10 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
     new_message_sent = False
     if current_message_obj:
         try:
+            parse_mode = "Markdown" if not is_think_block_content else "HTML"
             updated_msg = await _update_message_helper(bot=bot, message_to_edit=current_message_obj,
-                                                       new_text=final_text_to_send, new_markup=None)
+                                                       new_text=final_text_to_send, new_markup=None,
+                                                       parse_mode=parse_mode)
             return updated_msg
         except TelegramBadRequest as e:
             if "message to edit not found" in str(e).lower() or \
@@ -104,8 +106,8 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
 
     if new_message_sent:
         try:
-            parse_mode = "MarkdownV2" if not is_think_block_content else "HTML"
-            return await bot.send_message(chat_id, final_text_to_send, parse_mode="HTML")
+            parse_mode = "Markdown" if not is_think_block_content else "HTML"
+            return await bot.send_message(chat_id, final_text_to_send, parse_mode=parse_mode)
         except TelegramBadRequest as e:
             print(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
             # escaped_text = hide_link(text_content) # Use original raw content for hide_link
@@ -118,7 +120,13 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
 
 
 @router.message(filters.CommandStart())
-async def start(message: types.Message, session: sqlalchemy.orm.Session, user: models.user.User):
+async def start(message: types.Message, session: sqlalchemy.orm.Session, user: models.user.User,
+                command: aiogram.filters.CommandObject):
+    if command.args and command.args.isnumeric():
+        referrer_id = int(command.args)
+        if referrer_id != user.id and user.referrer_id is None:
+            user.referrer_id = referrer_id
+
     await message.answer(
         strings.GREETING,
         reply_markup=keyboards.reply.get_menu_keyboard()
@@ -148,15 +156,16 @@ async def clear_context(message: aiogram.types.Message, session: sqlalchemy.orm.
     strings.MENU_KEYBOARD.SETTINGS
 ]))
 async def menu_handler(message: types.Message, state: aiogram.fsm.context.FSMContext,
-                       user: models.user.User):
+                       user: models.user.User, bot: aiogram.Bot):
     match message.text:
         case strings.MENU_KEYBOARD.PROFILE:
             await message.answer(strings.profile_info(user), parse_mode="Markdown")
         case strings.MENU_KEYBOARD.MODEL:
             kb = await keyboards.inline.get_model_keyboard(user)
-            await message.answer("Change model kb", reply_markup=kb)
+            await message.answer(strings.CHANGE_MODEL_TEXT, reply_markup=kb)
         case strings.MENU_KEYBOARD.REFERRAL:
-            await message.answer("Referral")
+            promo_text = await strings.promo(user, bot)
+            await message.answer(promo_text)
         case strings.MENU_KEYBOARD.SETTINGS:
             await keyboard.set_initial_settings_state(state)
             initial_menu_key = keyboards.inline.MENU_MAIN
@@ -170,6 +179,9 @@ async def menu_handler(message: types.Message, state: aiogram.fsm.context.FSMCon
 @router.message(keyboard.MenuState.navigating, aiogram.F.text)
 async def other_text_handler(message: types.Message, user: models.user.User, session: sqlalchemy.orm.Session,
                              bot: aiogram.Bot):
+    user.requests += 1
+    session.add(user)
+
     active_message_object: types.Message | None = None
     try:
         active_message_object = await message.answer("⏳", parse_mode="MarkdownV2")
@@ -189,10 +201,10 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
 
     ai_messages = []
     if user.instruction_mode_on and user.instruction:
-        ai_messages.append({"role": "system", "content": user.instruction})
+        ai_messages.append({"role": "system", "content": strings.DEFAULT_INSTRUCTIONS + user.instruction})
+    else:
+        ai_messages.append({"role": "system", "content": strings.DEFAULT_INSTRUCTIONS})
     ai_messages += services.message_service.get_context_messages(session, user)
-
-    # TODO: Add context messages if user.context_mode_on is True
 
     ai_messages.append({"role": "user", "content": message.text})
     request_data = {
@@ -306,7 +318,6 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
                             temp_remaining_text = current_text_segment[split_at:]
                             is_last_current_message_update = True
 
-
                         if text_to_format_and_send.strip() or (
                                 active_message_object and active_message_object.text == "⏳"):
                             active_message_object = await send_or_update_formatted_message(
@@ -330,6 +341,9 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
                         bot=bot, chat_id=message.chat.id, text_content=current_text_segment,
                         current_message_obj=active_message_object, is_think_block_content=is_in_think_block
                     )
+
+        user.successful_requests += 1
+        session.add(user)
 
     except aiohttp.ClientError as e:
         err_msg = "Error: Could not connect to AI service."  # TODO: Localize
