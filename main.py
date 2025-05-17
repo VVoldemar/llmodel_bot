@@ -19,6 +19,7 @@ dp.update.outer_middleware(middleware.db.DbSessionMiddleware())
 async def main():
     db_session.global_init(settings.DB_FILE)
     dp.include_routers(*routers.routers)
+    os.makedirs("profile_images", exist_ok=True)
     await dp.start_polling(bot)
 
 

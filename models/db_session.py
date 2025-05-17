@@ -21,7 +21,7 @@ def global_init(db_file):
     conn_str = f'sqlite:///{db_file.strip()}?check_same_thread=False'
     logging.info(f"Connection to db at the address {db_file}")
 
-    engine = sa.create_engine(conn_str, echo=settings.DEBUG_MODE)
+    engine = sa.create_engine(conn_str)
     __factory = orm.sessionmaker(bind=engine)
 
     SqlAlchemyBase.metadata.create_all(engine)

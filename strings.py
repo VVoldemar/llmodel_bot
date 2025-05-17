@@ -36,6 +36,17 @@ class MENU_KEYBOARD:
     SETTINGS = "📜 Настройки"
 
 
+class PROFILE_PHOTO:
+    LOAD_PHOTO_TEXT = "Load profile photo. As photo, not as file"
+    LOAD_PHOTO_WRONG_FORMAT = "You haven't uploaded photo file yet. Load it as a photo, not a file"
+    SAVE_PHOTO_SUCCESS = "✅ Photo saved successfully"
+    SAVE_PHOTO_FAILED = "❌ Photo wasn't saved, unexpected error occurred. Try again."
+    CANCEL_TEXT = "Profile picture loading cancelled"
+
+    CANCEL_LOADING = "Cancel"
+    CANCEL_CALLBACK = "cancel"
+
+
 DEFAULT_INSTRUCTIONS = """Please note:
 Markdown entities must not be nested.
 To escape characters '_', '*', '`', '[' outside of an entity, prepend the characters '\\' before them."""

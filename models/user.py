@@ -24,6 +24,8 @@ class User(SqlAlchemyBase):
     requests: orm.Mapped[int] = orm.mapped_column(sa.Integer, default=0)
     successful_requests: orm.Mapped[int] = orm.mapped_column(sa.Integer, default=0)
 
+    profile_media_group_id: orm.Mapped[str] = orm.mapped_column(sa.String, nullable=True)
+
     referrer = orm.relationship("User", back_populates="referrals", remote_side=[id])
     referrals = orm.relationship("User", back_populates="referrer")
 

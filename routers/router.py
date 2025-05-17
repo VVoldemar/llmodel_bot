@@ -1,8 +1,10 @@
 import os
 import json
 import asyncio
+import logging
 
 import aiogram
+import aiogram.fsm.state
 import aiogram.fsm.context
 import aiogram.utils.formatting
 import aiogram.utils.markdown
@@ -31,9 +33,22 @@ MIN_UPDATE_INTERVAL_SEC = 0.7  # Min interval between message edits to avoid "To
 THINK_TAG_START = {"<think>", "<reasoning>"}
 THINK_TAG_END = {"</think>", "</reasoning>"}
 
+_recently_processed_media_groups = {}
+_processing_lock = asyncio.Lock()
 
-async def _update_message_helper(bot: aiogram.Bot, message_to_edit: types.Message, new_text: str,
-                                 new_markup: types.InlineKeyboardMarkup | None = None, parse_mode: str = "HTML"):
+# Timeout for considering a media group
+MEDIA_GROUP_PROCESS_TIMEOUT = 30
+
+
+class LoadState(aiogram.fsm.state.StatesGroup):
+    loading_profile_pic = aiogram.fsm.state.State()
+
+
+async def _update_message_helper(bot: aiogram.Bot,
+                                 message_to_edit: types.Message,
+                                 new_text: str,
+                                 new_markup: types.InlineKeyboardMarkup | None = None,
+                                 parse_mode: str = "HTML"):
     """Helper to edit a message, similar to _update_message."""
     if not message_to_edit:
         return None
@@ -53,7 +68,9 @@ async def _update_message_helper(bot: aiogram.Bot, message_to_edit: types.Messag
         raise
 
 
-async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_content: str,
+async def send_or_update_formatted_message(bot: aiogram.Bot,
+                                           chat_id: int,
+                                           text_content: str,
                                            current_message_obj: types.Message | None,
                                            is_think_block_content: bool,
                                            is_last_update: bool = False) -> types.Message | None:
@@ -93,10 +110,10 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
         except TelegramBadRequest as e:
             if "message to edit not found" in str(e).lower() or \
                     "message can't be edited" in str(e).lower():
-                print(f"Cannot edit message {current_message_obj.message_id}, sending new. Error: {e}")
+                logging.info(f"Cannot edit message {current_message_obj.message_id}, sending new. Error: {e}")
                 new_message_sent = True
             elif "message is not modified" not in str(e).lower():
-                print(
+                logging.info(
                     f"Telegram API error on update: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
                 new_message_sent = True
             else:
@@ -109,10 +126,10 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
             parse_mode = "Markdown" if not is_think_block_content else "HTML"
             return await bot.send_message(chat_id, final_text_to_send, parse_mode=parse_mode)
         except TelegramBadRequest as e:
-            print(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
+            logging.info(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
             # escaped_text = hide_link(text_content) # Use original raw content for hide_link
             # try:
-            # print(f"Attempting to send with hide_link: {escaped_text[:100]}...")
+            # logging.info(f"Attempting to send with hide_link: {escaped_text[:100]}...")
             # return await bot.send_message(chat_id, escaped_text, parse_mode=None)
             # except Exception as e:
             #     pass
@@ -120,7 +137,9 @@ async def send_or_update_formatted_message(bot: aiogram.Bot, chat_id: int, text_
 
 
 @router.message(filters.CommandStart())
-async def start(message: types.Message, session: sqlalchemy.orm.Session, user: models.user.User,
+async def start(message: types.Message,
+                session: sqlalchemy.orm.Session,
+                user: models.user.User,
                 command: aiogram.filters.CommandObject):
     if command.args and command.args.isnumeric():
         referrer_id = int(command.args)
@@ -140,7 +159,9 @@ async def start(message: types.Message, session: sqlalchemy.orm.Session, user: m
 @router.message(aiogram.filters.command.Command("clear_context"))
 @router.message(aiogram.filters.command.Command("clearcontext"))
 @router.message(aiogram.filters.command.Command("clear"))
-async def clear_context(message: aiogram.types.Message, session: sqlalchemy.orm.Session, user: models.user.User):
+async def clear_context(message: aiogram.types.Message,
+                        session: sqlalchemy.orm.Session,
+                        user: models.user.User):
     try:
         services.message_service.delete_messages(session, user)
         await message.answer(strings.CLEAR_CONTEXT.SUCESS)
@@ -159,25 +180,126 @@ async def menu_handler(message: types.Message, state: aiogram.fsm.context.FSMCon
                        user: models.user.User, bot: aiogram.Bot):
     match message.text:
         case strings.MENU_KEYBOARD.PROFILE:
+            file_name = f"profile_images/{user.id}.jpg"
+            if os.path.isfile(file_name):
+                photo = aiogram.types.FSInputFile(file_name)
+                await message.answer_photo(photo)
+
             await message.answer(strings.profile_info(user), parse_mode="Markdown")
+
         case strings.MENU_KEYBOARD.MODEL:
             kb = await keyboards.inline.get_model_keyboard(user)
             await message.answer(strings.CHANGE_MODEL_TEXT, reply_markup=kb)
+
         case strings.MENU_KEYBOARD.REFERRAL:
             promo_text = await strings.promo(user, bot)
             await message.answer(promo_text)
+
         case strings.MENU_KEYBOARD.SETTINGS:
             await keyboard.set_initial_settings_state(state)
             initial_menu_key = keyboards.inline.MENU_MAIN
+
             kb = await keyboards.inline.get_settings_keyboard(initial_menu_key, user=user)
             message_text = keyboards.inline.MENU_TITLES.get(initial_menu_key, "Settings")
             sent_message = await message.answer(message_text, reply_markup=kb, parse_mode="Markdown")
             await state.update_data(prompt_message_id=sent_message.message_id)
 
 
+@router.message(aiogram.filters.command.Command("profile_image"))
+async def profile_image(message: aiogram.types.Message,
+                        state: aiogram.fsm.context.FSMContext):
+    await state.set_state(LoadState.loading_profile_pic)
+
+    kb = await keyboards.inline.get_profile_picture_keyboard()
+    await message.answer(strings.PROFILE_PHOTO.LOAD_PHOTO_TEXT, reply_markup=kb)
+
+
+@router.message(LoadState.loading_profile_pic, aiogram.F.photo)
+async def load_and_save_profile_image(message: aiogram.types.Message,
+                                user: models.user.User,
+                                session: sqlalchemy.orm.Session,
+                                state: aiogram.fsm.context.FSMContext,
+                                bot: aiogram.Bot):
+    picture = message.photo[-1]
+    file_name = f"profile_images/{user.id}.jpg"
+    media_group_id = message.media_group_id
+
+    process_this_image_db_update = True
+
+    if media_group_id:
+        async with _processing_lock:
+            current_time = asyncio.get_event_loop().time()
+            # Clean up old entries
+            for key, ts in list(_recently_processed_media_groups.items()):
+                if current_time - ts > MEDIA_GROUP_PROCESS_TIMEOUT:
+                    del _recently_processed_media_groups[key]
+            
+            processing_key = (user.id, media_group_id)
+
+            if processing_key in _recently_processed_media_groups:
+                process_this_image_db_update = False
+                logging.info(f"Media group {media_group_id} for user {user.id} (image {message.photo[0].file_unique_id}): already processed or processing first image. Skipping DB update for profile_media_group_id.")
+            else:
+                # The first image of this media group
+                _recently_processed_media_groups[processing_key] = current_time
+                logging.info(f"Processing first image of media group {media_group_id} for user {user.id} (image {message.photo[0].file_unique_id}).")
+                if user.profile_media_group_id == media_group_id:
+                    logging.info(f"Media group {media_group_id} for user {user.id} already set in DB. Skipping DB update.")
+                    process_this_image_db_update = False
+
+    try:
+        file = await bot.get_file(picture.file_id)
+        file_path = file.file_path
+
+        if process_this_image_db_update:
+            os.makedirs(os.path.dirname(file_name), exist_ok=True) # Na vsyakiy sluchay
+            await bot.download_file(file_path, destination=file_name)
+            logging.info(f"Downloaded photo {picture.file_id} to {file_name} for user {user.id}")
+
+
+            user.profile_media_group_id = media_group_id
+            session.add(user)
+
+            await message.reply(strings.PROFILE_PHOTO.SAVE_PHOTO_SUCCESS)
+            await state.clear()
+    except sqlalchemy.exc.OperationalError as e:
+        if "database is locked" in str(e).lower():
+            logging.warning(f"Database locked for user {user.id} during profile image save: {e}. Session will be rolled back.")
+            await message.reply("Failed to save profile picture due to a temporary database issue. Please try again.")
+        else:
+            logging.error(f"SQLAlchemy OperationalError for user {user.id}: {e}")
+            await message.reply(strings.PROFILE_PHOTO.SAVE_PHOTO_FAILED)
+    except Exception as e:
+        logging.error(f"Error saving profile image for user {user.id}: {e}", exc_info=True)
+        await message.reply(strings.PROFILE_PHOTO.SAVE_PHOTO_FAILED)
+        await state.clear()
+    except Exception:
+        await message.reply(strings.PROFILE_PHOTO.SAVE_PHOTO_FAILED)
+
+
+@router.message(LoadState.loading_profile_pic)
+async def wrong_profile_image(message: aiogram.types.Message):
+    kb = await keyboards.inline.get_profile_picture_keyboard()
+    await message.answer(strings.PROFILE_PHOTO.LOAD_PHOTO_WRONG_FORMAT, reply_markup=kb)
+
+
+@router.callback_query(LoadState.loading_profile_pic,
+                       keyboards.callback_data.ProfilePictureCallback.filter())
+async def cancel_profile_image_loading(query: aiogram.types.CallbackQuery,
+                                       state: aiogram.fsm.context.FSMContext,
+                                       bot: aiogram.Bot):
+    await query.answer()
+    await state.clear()
+    await bot.delete_message(chat_id=query.message.chat.id, message_id=query.message.message_id)
+    await query.message.answer(strings.PROFILE_PHOTO.CANCEL_TEXT)
+
+
+
 @router.message(aiogram.filters.StateFilter(None), aiogram.F.text)
 @router.message(keyboard.MenuState.navigating, aiogram.F.text)
-async def other_text_handler(message: types.Message, user: models.user.User, session: sqlalchemy.orm.Session,
+async def other_text_handler(message: types.Message,
+                             user: models.user.User,
+                             session: sqlalchemy.orm.Session,
                              bot: aiogram.Bot):
     user.requests += 1
     session.add(user)
@@ -186,7 +308,7 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
     try:
         active_message_object = await message.answer("⏳", parse_mode="MarkdownV2")
     except TelegramBadRequest:
-        await message.answer("Error: Could not start AI response.")  # TODO: Localize
+        await message.answer("Error: Could not start AI response.")
         return
 
     current_text_segment = ""
@@ -229,7 +351,7 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
             async with http_session.post(stream_url, data=json_request_data, headers=headers) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    print(f"AI API Error {response.status}: {error_text[:500]}")
+                    logging.info(f"AI API Error {response.status}: {error_text[:500]}")
                     active_message_object = await send_or_update_formatted_message(bot, message.chat.id,
                                                                                    f"AI Error: {response.status}",
                                                                                    active_message_object, False)
@@ -328,7 +450,6 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
                             current_text_segment = temp_remaining_text
                         if temp_remaining_text.strip():
                             if active_message_object and text_to_format_and_send.strip():
-                                print("here")
                                 active_message_object = None
                         last_update_ts = now
 
@@ -346,15 +467,15 @@ async def other_text_handler(message: types.Message, user: models.user.User, ses
         session.add(user)
 
     except aiohttp.ClientError as e:
-        err_msg = "Error: Could not connect to AI service."  # TODO: Localize
+        err_msg = "Error: Could not connect to AI service."
         if active_message_object:
             await send_or_update_formatted_message(bot, message.chat.id, err_msg, active_message_object, False)
         else:
             await message.answer(err_msg)
     except TelegramBadRequest as e:
-        await message.answer("Error: A problem occurred while displaying the AI response.")  # TODO: Localize
+        await message.answer("Error: A problem occurred while displaying the AI response.")
     except Exception as e:
-        err_msg = "Error: An unexpected error occurred."  # TODO: Localize
+        err_msg = "Error: An unexpected error occurred."
         if active_message_object:
             await send_or_update_formatted_message(bot=bot, chat_id=message.chat.id, text_content=err_msg,
                                                    current_message_obj=active_message_object,

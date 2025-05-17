@@ -117,3 +117,14 @@ async def get_model_keyboard(user: models.user.User) -> aiogram.types.InlineKeyb
 
     builder.adjust(2)
     return builder.as_markup()
+
+async def get_profile_picture_keyboard():
+    """Returns button markup for the profile picture loading interaction."""
+    builder = aiogram.utils.keyboard.InlineKeyboardBuilder()
+
+    builder.button(
+        text=strings.PROFILE_PHOTO.CANCEL_LOADING,
+        callback_data=callback_data.ProfilePictureCallback(action=strings.PROFILE_PHOTO.CANCEL_CALLBACK)
+    )
+
+    return builder.as_markup()
