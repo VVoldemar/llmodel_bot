@@ -165,4 +165,4 @@ async def change_model(query: aiogram.types.CallbackQuery,
 
     kb = await keyboards.inline.get_model_keyboard(user)
 
-    await _update_message(query.message, query.message.md_text, kb, bot)
+    await _update_message(query.message, query.message.text, kb, bot)

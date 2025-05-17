@@ -24,12 +24,14 @@ from aiogram import filters
 from aiogram import types
 from . import keyboard
 
+logging.basicConfig(level=logging.INFO)
+
 router = Router()
 
 MAX_MESSAGE_LEN = 4096
 # Buffer to avoid hitting the exact limit
 SAFE_MAX_LEN = 4000
-MIN_UPDATE_INTERVAL_SEC = 0.7  # Min interval between message edits to avoid "Too Many Requests"
+MIN_UPDATE_INTERVAL_SEC = 1.1  # Min interval between message edits to avoid "Too Many Requests"
 THINK_TAG_START = {"<think>", "<reasoning>"}
 THINK_TAG_END = {"</think>", "</reasoning>"}
 
@@ -42,6 +44,17 @@ MEDIA_GROUP_PROCESS_TIMEOUT = 30
 
 class LoadState(aiogram.fsm.state.StatesGroup):
     loading_profile_pic = aiogram.fsm.state.State()
+
+
+def _get_escaped_text(text: str, is_think_block_content: bool):
+    """Returns escaped html text if `is_think_block_content`, else md escaped text"""
+    text_to_send = aiogram.utils.formatting.Text(text)
+    if is_think_block_content:
+        escaped_text = text_to_send.as_html()
+    else:
+        escaped_text = text_to_send.as_markdown()
+
+    return escaped_text
 
 
 async def _update_message_helper(bot: aiogram.Bot,
@@ -83,26 +96,22 @@ async def send_or_update_formatted_message(bot: aiogram.Bot,
             return current_message_obj
         return None
 
-    final_text_to_send = aiogram.utils.formatting.Text("")
+    escaped_text = _get_escaped_text(text_content, is_think_block_content)
     if is_think_block_content:
-        final_text_to_send = aiogram.utils.formatting.Text(text_content)
-        stripped_content = text_content.strip()
-        if stripped_content:
-            stripped_content = aiogram.utils.formatting.Text(stripped_content)
-            final_text_to_send = f"<blockquote{" expandable" if is_last_update else ""}>\n" + stripped_content.as_html() + "</blockquote>"
+        final_text_to_send = f"<blockquote{" expandable" if is_last_update else ""}>\n" + escaped_text + "</blockquote>"
 
     else:
-        final_text_to_send = aiogram.utils.formatting.Text(text_content).as_html()
+        final_text_to_send = text_content
 
     if not final_text_to_send and not (current_message_obj and current_message_obj.text == "⏳"):
         if current_message_obj:
             return current_message_obj
         return None
 
+    parse_mode = "Markdown" if not is_think_block_content else "HTML"
     new_message_sent = False
     if current_message_obj:
         try:
-            parse_mode = "Markdown" if not is_think_block_content else "HTML"
             updated_msg = await _update_message_helper(bot=bot, message_to_edit=current_message_obj,
                                                        new_text=final_text_to_send, new_markup=None,
                                                        parse_mode=parse_mode)
@@ -113,8 +122,11 @@ async def send_or_update_formatted_message(bot: aiogram.Bot,
                 logging.info(f"Cannot edit message {current_message_obj.message_id}, sending new. Error: {e}")
                 new_message_sent = True
             elif "message is not modified" not in str(e).lower():
-                logging.info(
-                    f"Telegram API error on update: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
+                logging.warning(  # Changed to warning and added more details
+                    f"Telegram API error on update (message_id: {current_message_obj.message_id if current_message_obj else 'None'}): {e}. Error type: {type(e)}. Falling back to sending new message. Text: '{final_text_to_send[:100]}...'")
+                new_message_sent = True
+                # logging.info(
+                #     f"Telegram API error on update: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
                 new_message_sent = True
             else:
                 return current_message_obj
@@ -123,16 +135,25 @@ async def send_or_update_formatted_message(bot: aiogram.Bot,
 
     if new_message_sent:
         try:
-            parse_mode = "Markdown" if not is_think_block_content else "HTML"
             return await bot.send_message(chat_id, final_text_to_send, parse_mode=parse_mode)
         except TelegramBadRequest as e:
             logging.info(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
             # escaped_text = hide_link(text_content) # Use original raw content for hide_link
-            # try:
-            # logging.info(f"Attempting to send with hide_link: {escaped_text[:100]}...")
-            # return await bot.send_message(chat_id, escaped_text, parse_mode=None)
-            # except Exception as e:
-            #     pass
+            try:
+                parse_mode = "MarkdownV2"
+                final_text_to_send = _get_escaped_text(text_content, is_think_block_content, parse_mode=parse_mode)
+                return await bot.send_message(chat_id, final_text_to_send, parse_mode=parse_mode)
+            except Exception:
+                logging.warning(f"Telegram API error on send: {e}. Formatted Text: '{final_text_to_send[:100]}...'")
+        # logging.info(f"Attempting to send with hide_link: {escaped_text[:100]}...")
+
+
+
+
+        # try:
+        # return await bot.send_message(chat_id, escaped_text, parse_mode=None)
+        # except Exception as e:
+        #     pass
     return None
 
 
@@ -216,10 +237,10 @@ async def profile_image(message: aiogram.types.Message,
 
 @router.message(LoadState.loading_profile_pic, aiogram.F.photo)
 async def load_and_save_profile_image(message: aiogram.types.Message,
-                                user: models.user.User,
-                                session: sqlalchemy.orm.Session,
-                                state: aiogram.fsm.context.FSMContext,
-                                bot: aiogram.Bot):
+                                      user: models.user.User,
+                                      session: sqlalchemy.orm.Session,
+                                      state: aiogram.fsm.context.FSMContext,
+                                      bot: aiogram.Bot):
     picture = message.photo[-1]
     file_name = f"profile_images/{user.id}.jpg"
     media_group_id = message.media_group_id
@@ -233,18 +254,21 @@ async def load_and_save_profile_image(message: aiogram.types.Message,
             for key, ts in list(_recently_processed_media_groups.items()):
                 if current_time - ts > MEDIA_GROUP_PROCESS_TIMEOUT:
                     del _recently_processed_media_groups[key]
-            
+
             processing_key = (user.id, media_group_id)
 
             if processing_key in _recently_processed_media_groups:
                 process_this_image_db_update = False
-                logging.info(f"Media group {media_group_id} for user {user.id} (image {message.photo[0].file_unique_id}): already processed or processing first image. Skipping DB update for profile_media_group_id.")
+                logging.info(
+                    f"Media group {media_group_id} for user {user.id} (image {message.photo[0].file_unique_id}): already processed or processing first image. Skipping DB update for profile_media_group_id.")
             else:
                 # The first image of this media group
                 _recently_processed_media_groups[processing_key] = current_time
-                logging.info(f"Processing first image of media group {media_group_id} for user {user.id} (image {message.photo[0].file_unique_id}).")
+                logging.info(
+                    f"Processing first image of media group {media_group_id} for user {user.id} (image {message.photo[0].file_unique_id}).")
                 if user.profile_media_group_id == media_group_id:
-                    logging.info(f"Media group {media_group_id} for user {user.id} already set in DB. Skipping DB update.")
+                    logging.info(
+                        f"Media group {media_group_id} for user {user.id} already set in DB. Skipping DB update.")
                     process_this_image_db_update = False
 
     try:
@@ -252,10 +276,9 @@ async def load_and_save_profile_image(message: aiogram.types.Message,
         file_path = file.file_path
 
         if process_this_image_db_update:
-            os.makedirs(os.path.dirname(file_name), exist_ok=True) # Na vsyakiy sluchay
+            os.makedirs(os.path.dirname(file_name), exist_ok=True)  # Na vsyakiy sluchay
             await bot.download_file(file_path, destination=file_name)
             logging.info(f"Downloaded photo {picture.file_id} to {file_name} for user {user.id}")
-
 
             user.profile_media_group_id = media_group_id
             session.add(user)
@@ -264,7 +287,8 @@ async def load_and_save_profile_image(message: aiogram.types.Message,
             await state.clear()
     except sqlalchemy.exc.OperationalError as e:
         if "database is locked" in str(e).lower():
-            logging.warning(f"Database locked for user {user.id} during profile image save: {e}. Session will be rolled back.")
+            logging.warning(
+                f"Database locked for user {user.id} during profile image save: {e}. Session will be rolled back.")
             await message.reply("Failed to save profile picture due to a temporary database issue. Please try again.")
         else:
             logging.error(f"SQLAlchemy OperationalError for user {user.id}: {e}")
@@ -294,7 +318,6 @@ async def cancel_profile_image_loading(query: aiogram.types.CallbackQuery,
     await query.message.answer(strings.PROFILE_PHOTO.CANCEL_TEXT)
 
 
-
 @router.message(aiogram.filters.StateFilter(None), aiogram.F.text)
 @router.message(keyboard.MenuState.navigating, aiogram.F.text)
 async def other_text_handler(message: types.Message,
@@ -306,9 +329,9 @@ async def other_text_handler(message: types.Message,
 
     active_message_object: types.Message | None = None
     try:
-        active_message_object = await message.answer("⏳", parse_mode="MarkdownV2")
+        active_message_object = await message.answer("⏳")
     except TelegramBadRequest:
-        await message.answer("Error: Could not start AI response.")
+        await message.answer("Error: Could not start AI response. Try select other model or clear context.")
         return
 
     current_text_segment = ""
@@ -326,7 +349,9 @@ async def other_text_handler(message: types.Message,
         ai_messages.append({"role": "system", "content": strings.DEFAULT_INSTRUCTIONS + user.instruction})
     else:
         ai_messages.append({"role": "system", "content": strings.DEFAULT_INSTRUCTIONS})
-    ai_messages += services.message_service.get_context_messages(session, user)
+
+    if user.context_mode_on:
+        ai_messages += services.message_service.get_context_messages(session, user)
 
     ai_messages.append({"role": "user", "content": message.text})
     request_data = {
@@ -360,7 +385,7 @@ async def other_text_handler(message: types.Message,
                 async for chunk_bytes in response.content.iter_any():
                     if not chunk_bytes:
                         continue
-                    print(chunk_bytes.decode("utf-8", errors="ignore"))
+                    # print(chunk_bytes.decode("utf-8", errors="ignore"), end="")
 
                     processing_buffer += chunk_bytes.decode("utf-8", errors="ignore")
                     full_response_for_history += processing_buffer
@@ -385,16 +410,12 @@ async def other_text_handler(message: types.Message,
                                         is_last_update=True
                                     )
 
-                                # active_message_object = await send_or_update_formatted_message(
-                                #     bot, message.chat.id, current_text_segment, active_message_object,
-                                #     is_in_think_block,
-                                #     is_last_update=True
-                                # )
                                 is_in_think_block = False
                                 current_text_segment = ""
                                 active_message_object = None
                             else:
                                 current_text_segment += processing_buffer
+                                print(processing_buffer)
                                 processing_buffer = ""
                                 break
                         else:
@@ -418,6 +439,7 @@ async def other_text_handler(message: types.Message,
                                 current_text_segment = ""
                             else:
                                 current_text_segment += processing_buffer
+                                print(processing_buffer)
                                 processing_buffer = ""
                                 break
 
@@ -427,7 +449,7 @@ async def other_text_handler(message: types.Message,
                     now = asyncio.get_event_loop().time()
                     if len(current_text_segment) > SAFE_MAX_LEN or \
                             (
-                                    current_text_segment.strip() and now - last_update_ts > MIN_UPDATE_INTERVAL_SEC and active_message_object is not None):
+                                    current_text_segment.strip() and now - last_update_ts > MIN_UPDATE_INTERVAL_SEC):
 
                         text_to_format_and_send = current_text_segment
                         temp_remaining_text = ""
@@ -454,6 +476,7 @@ async def other_text_handler(message: types.Message,
                         last_update_ts = now
 
                 if processing_buffer:
+                    print(processing_buffer)
                     current_text_segment += processing_buffer
                     processing_buffer = ""
 
@@ -465,6 +488,12 @@ async def other_text_handler(message: types.Message,
 
         user.successful_requests += 1
         session.add(user)
+
+        await asyncio.sleep(10)
+        await send_or_update_formatted_message(
+            bot=bot, chat_id=message.chat.id, text_content=current_text_segment,
+            current_message_obj=active_message_object, is_think_block_content=is_in_think_block
+        )
 
     except aiohttp.ClientError as e:
         err_msg = "Error: Could not connect to AI service."

@@ -47,9 +47,11 @@ class PROFILE_PHOTO:
     CANCEL_CALLBACK = "cancel"
 
 
-DEFAULT_INSTRUCTIONS = """Please note:
-Markdown entities must not be nested.
-To escape characters '_', '*', '`', '[' outside of an entity, prepend the characters '\\' before them."""
+DEFAULT_INSTRUCTIONS = ""
+# DEFAULT_INSTRUCTIONS = """Please note:
+# Markdown entities must not be nested.
+# To escape characters '_', '*', '`', '[' outside of an entity, prepend the characters '\\' before them."""
+#For bold text use only on y *, e.g. *bold text*
 
 CHANGE_MODEL_TEXT = "Select preferable model. If model doesn't respond, try clear context or select another one."
 MODELS = {
@@ -59,7 +61,7 @@ MODELS = {
     "deepseek-v3": "DeepSeek V3"
 }
 
-MODEL_SELECTED = "✅ "
+MODEL_SELECTED = "🟢 "
 
 
 class SETTINGS_MENUS:

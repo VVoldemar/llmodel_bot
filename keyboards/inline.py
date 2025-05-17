@@ -110,7 +110,7 @@ async def get_model_keyboard(user: models.user.User) -> aiogram.types.InlineKeyb
     models = strings.MODELS.copy()
 
     if user.selected_model is not None and user.selected_model in models:
-        models[user.selected_model] = models[user.selected_model] + strings.MODEL_SELECTED
+        models[user.selected_model] = strings.MODEL_SELECTED + models[user.selected_model]
 
     for model_id, model_name in models.items():
         builder.button(text=model_name, callback_data=callback_data.ModelCallback(model=model_id))
