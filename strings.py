@@ -21,19 +21,19 @@ Referrals: {len(user.referrals)}
 async def promo(user: User, bot: aiogram.Bot):
     bot_info = await bot.get_me()
     return f"""
-Отправьте друзьям эту ссылку:
+Send this link to your friends:
 https://t.me/{bot_info.username}?start={user.id}
 
-Она сработает, только если они не взаимодействовали с ботом до этого
+It will only work if they have not interacted with the bot before
 """
 
 
 class MENU_KEYBOARD:
-    PROFILE = "👤 Профиль"
-    MODEL = "🧰 Выбрать ИИ модель"
-    HELP = "🆘 Поддержка"
-    REFERRAL = "🔗 Привести друга"
-    SETTINGS = "📜 Настройки"
+    PROFILE = "👤 Profile"
+    MODEL = "🧰 Choose AI model"
+    HELP = "🆘 Support"
+    REFERRAL = "🔗 Invite a friend"
+    SETTINGS = "📜 Settings"
 
 
 class PROFILE_PHOTO:
@@ -72,11 +72,10 @@ class SETTINGS_MENUS:
 
     class DESCRIPTION:
         MENU_MAIN = """*Settings*
-        
-        In this section, you can:
-        1. Assign any role or custom instruction the bot will consider when preparing responses.
-        2. Turn context maintenance on or off. When the context is on, the bot considers its previous response to conduct a dialogue.
-        3. Select the interface language."""
+In this section, you can:
+1. Assign any role or custom instruction the bot will consider when preparing responses.
+2. Turn context maintenance on or off. When the context is on, the bot considers its previous response to conduct a dialogue.
+3. Select the interface language."""
         MENU_INSTRUCTION = "*Instruction Settings*\n\nIn this section, you can assign any role or instruction, which the bot will follow when preparing responses.\n\n"
         MENU_CONTEXT = "*Context Settings*\n\nThis affects an AI's ability to view dialog history"
         MENU_LANGUAGE = "*Language Settings*\n\nSelect language inteface"
